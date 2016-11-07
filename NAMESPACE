@@ -1,13 +1,13 @@
 useDynLib(smashtpx)
-import(slam)
 import(SQUAREM)
 import(boot)
+import(slam)
 
 export(stm_tfidf,
        smash.normalizetpx,
        rdir,
-       smash.topics
-       ord.tpxlpost,
+       smash.topics,
+       smash.tpxlpost,
        CheckCounts,
        smash.tpxfit,
        smash.tpxweights,

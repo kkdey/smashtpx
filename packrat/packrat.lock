@@ -7,7 +7,27 @@ Repos: BioCsoft=https://bioconductor.org/packages/3.4/bioc,
     BioCextra=https://bioconductor.org/packages/3.4/extra,
     CRAN=https://cran.rstudio.com/
 
+Package: MASS
+Source: CRAN
+Version: 7.3-45
+Hash: 0650d5701aa7e369e77c9e2c8e1dc913
+
+Package: SQUAREM
+Source: CRAN
+Version: 2016.8-2
+Hash: f7cf70f406ebe4294b1b9c85f28bdc8c
+
+Package: boot
+Source: CRAN
+Version: 1.3-18
+Hash: 3f3516de42d575c03309e6aa2aea52aa
+
 Package: packrat
 Source: CRAN
 Version: 0.4.8-1
 Hash: 6ad605ba7b4b476d84be6632393f5765
+
+Package: slam
+Source: CRAN
+Version: 0.1-38
+Hash: fae6bb05e5c2d8867df575ede304d5cb

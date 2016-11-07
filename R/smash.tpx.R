@@ -332,7 +332,6 @@ smash.tpxfit <- function(X, theta, alpha, tol, verb,
 
     if(iter %% smash_gap){
         if(smooth_method=="poisson"){
-            move <- ord.tpxEM(X=X, m=m, theta=theta, omega=omega)
             z_leaf_est <- round(sweep(move$theta, MARGIN=2, colSums(sweep(move$omega, MARGIN = 1, row_total, "*")), "*"));
             z_leaf_smoothed <- do.call(cbind, lapply(1:dim(z_leaf_est)[2], function(k)
             {
@@ -351,7 +350,6 @@ smash.tpxfit <- function(X, theta, alpha, tol, verb,
           }
 
     if(smooth_method=="poisson"){
-            move <- ord.tpxEM(X=X, m=m, theta=theta, omega=omega)
             z_leaf_est <- round(sweep(move$theta, MARGIN=2, colSums(sweep(move$omega, MARGIN = 1, row_total, "*")), "*"));
             z_leaf_smoothed <- do.call(cbind, lapply(1:dim(z_leaf_est)[2], function(k)
             {
@@ -417,7 +415,6 @@ smash.tpxfit <- function(X, theta, alpha, tol, verb,
   }
 
   if(smooth_method=="gaussian"){
-    move <- ord.tpxEM(X=X, m=m, theta=theta, omega=omega)
     z_leaf_est <- round(sweep(move$theta, MARGIN=2, colSums(sweep(move$omega, MARGIN = 1, row_total, "*")), "*"));
     z_leaf_smoothed <- do.call(cbind, lapply(1:dim(z_leaf_est)[2], function(k)
     {
