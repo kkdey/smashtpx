@@ -17,6 +17,7 @@ smash.topics <- function(counts,
                    light=1,
                    method_admix=1,
                    sample_init=TRUE,
+                   init.method = "taddy",
                    smooth_gap = 10,
                    smooth_method = c("gaussian", "poisson"),
                    reflect = FALSE,
@@ -67,11 +68,12 @@ smash.topics <- function(counts,
   ## initialize
 
 
-  index_init <- 1:min(ceiling(nrow(X)*.05),100);
-  if(sample_init==TRUE){
-    samp_length <- length(index_init);
-    index_init <- sample(1:nrow(X),samp_length);
-  }
+  if(init_method=="taddy"){
+      index_init <- 1:min(ceiling(nrow(X)*.05),100);
+      if(sample_init==TRUE){
+            samp_length <- length(index_init);
+            index_init <- sample(1:nrow(X),samp_length);
+       }
 
   ## initialize
   if(init.adapt==FALSE){
@@ -89,7 +91,14 @@ smash.topics <- function(counts,
                            shape, verb, nbundles=1, use_squarem=FALSE,
                            init.adapt)
  #    }
+  }}
+
+  if(init_method=="kmeans"){
+    kmeans.init=kmeans(fcounts,K,nstart=5, iter.max=iter.max_val[init.repeat])
+    phi=t(kmeans.init$centers)
+    initopics = apply(phi, 2, function(x) return(x/sum(x)))
   }
+
 
   initopics[initopics==1] <- 1 - 1e-14;
   initopics[initopics==0] <- 1e-14;
