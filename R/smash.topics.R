@@ -18,8 +18,8 @@ smash.topics <- function(counts,
                    method_admix=1,
                    sample_init=TRUE,
                    init.method = "taddy",
-                   smooth_gap = 10,
-                   smooth_method = c("gaussian", "poisson"),
+                   smash_gap = 100,
+                   smash_method = "gaussian",
                    reflect = FALSE,
                    tmax=10000,...)
   ## tpxselect defaults: tmax=10000, wtol=10^(-4), qn=100, grp=NULL,
@@ -46,6 +46,9 @@ smash.topics <- function(counts,
   levels <- ceil+1;
   X <- CheckCounts(fcounts)
 
+  library(smashr)
+  library(ashr)
+
 
   p <- ncol(X)
   n <- nrow(X)
@@ -68,7 +71,7 @@ smash.topics <- function(counts,
   ## initialize
 
 
-  if(init_method=="taddy"){
+  if(init.method=="taddy"){
       index_init <- 1:min(ceiling(nrow(X)*.05),100);
       if(sample_init==TRUE){
             samp_length <- length(index_init);
@@ -78,23 +81,24 @@ smash.topics <- function(counts,
   ## initialize
   if(init.adapt==FALSE){
 
-  initopics <- tpxinit(X[index_init,], initopics, K[1],
-                       shape, verb, nbundles=1, use_squarem=FALSE, init.adapt)
+  initopics <- smash.tpxinit(X[index_init,], initopics, K[1],
+                       shape, verb, nbundles=1, use_squarem=FALSE,
+                       init.adapt)
     #initopics <- t(gtools::rdirichlet(4, rep(1+ 1/K*p, p)))
   }else{
  #   if(change_start_points){
- #      initopics <- tpxinit(X[1:min(ceiling(nrow(X)*.05),100),], initopics, K[1]+3,
+ #      initopics <- smash.tpxinit(X[1:min(ceiling(nrow(X)*.05),100),], initopics, K[1]+3,
  #                          shape, verb, nbundles=1, use_squarem=FALSE, init.adapt)
  #      initopics <- initopics[,sort(sample(1:(K[1]+2), K[1], replace=FALSE))];
  #   }else{
-      initopics <- tpxinit(X[index_init,], initopics, K[1],
+      initopics <- smash.tpxinit(X[index_init,], initopics, K[1],
                            shape, verb, nbundles=1, use_squarem=FALSE,
                            init.adapt)
  #    }
   }}
 
-  if(init_method=="kmeans"){
-    kmeans.init=kmeans(fcounts,K,nstart=5, iter.max=iter.max_val[init.repeat])
+  if(init.method=="kmeans"){
+    kmeans.init=kmeans(fcounts,K,nstart=5, iter.max=100)
     phi=t(kmeans.init$centers)
     initopics = apply(phi, 2, function(x) return(x/sum(x)))
   }
@@ -113,8 +117,8 @@ smash.topics <- function(counts,
                          light, tmax, admix=TRUE,
                          method_admix=1,
                          sample_init=TRUE,
-                         smooth_gap = smooth_gap,
-                         smooth_method = smooth_method,
+                         smash_gap = smash_gap,
+                         smash_method = smash_method,
                          grp=NULL, wtol=10^{-4}, qn=100,
                          nonzero=FALSE, dcut=-10, top_genes=150, burn_in=5)
 
@@ -127,7 +131,7 @@ smash.topics <- function(counts,
   theta=matrix(tpx$theta[,worder], ncol=K, dimnames=list(phrase=dimnames(X)[[2]], topic=paste(1:K)) )
   omega=matrix(tpx$omega[,worder], ncol=K, dimnames=list(document=NULL, topic=paste(1:K)) )
   if(nrow(omega)==nrow(X)){ dimnames(omega)[[1]] <- dimnames(X)[[1]] }
-
+  theta = theta[1:dim(counts)[2],];
   ## topic object
   out <- list(K=K, theta=theta, omega=omega, BF=tpx$BF, D=tpx$D, X=X)
   class(out) <- "topics"

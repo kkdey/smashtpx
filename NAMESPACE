@@ -10,8 +10,12 @@ export(stm_tfidf,
        smash.tpxlpost,
        CheckCounts,
        smash.tpxfit,
+       smash.tpxSelect,
        smash.tpxweights,
+       smash.tpxinit,
        smash.tpxQN,
        smash.tpxOmegaStart,
        smash.tpxQ,
        smash.tpxMixQ)
+
+importFrom("stats", "kmeans", "pchisq", "rgamma", "sd")

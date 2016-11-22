@@ -2,6 +2,7 @@
 
 ## ** Only referenced from topics.R
 
+
 ## check counts (can be an object from tm, slam, or a simple co-occurance matrix)
 CheckCounts <- function(counts){
   if(class(counts)[1] == "TermDocumentMatrix"){ counts <- t(counts) }
@@ -18,8 +19,8 @@ CheckCounts <- function(counts){
 smash.tpxSelect <- function(X, K, bf, initheta, alpha, tol, kill, verb, nbundles,
                       use_squarem, light, tmax, admix=TRUE, method_admix=1,
                       sample_init=TRUE,
-                      smooth_gap = smooth_gap,
-                      smooth_method = smooth_method,
+                      smash_gap = smash_gap,
+                      smash_method = smash_method,
                       grp=NULL, wtol=10^{-4}, qn=100,
                       nonzero=FALSE, dcut=-10,
                       top_genes=150, burn_in=5){
@@ -35,8 +36,8 @@ smash.tpxSelect <- function(X, K, bf, initheta, alpha, tol, kill, verb, nbundles
     if(verb){ cat(paste("Fitting the",K,"topic model.\n")) }
     fit <-  smash.tpxfit(X=X, theta=initheta, alpha=alpha, tol=tol, verb=verb,
                    admix=admix, method_admix=method_admix,
-                   smooth_gap = smooth_gap,
-                   smooth_method = smooth_method,
+                   smash_gap = smash_gap,
+                   smash_method = smash_method,
                    grp=grp, tmax=tmax, wtol=wtol, qn=qn,
                    nbundles=nbundles, use_squarem, light = light,
                    top_genes=top_genes,
@@ -73,7 +74,7 @@ smash.tpxSelect <- function(X, K, bf, initheta, alpha, tol, kill, verb, nbundles
   for(i in 1:nK){
 
     ## Solve for map omega in NEF space
-    fit <- tpxfit(X=X, theta=initheta, alpha=alpha, tol=tol, verb=verb,
+    fit <- smash.tpxfit(X=X, theta=initheta, alpha=alpha, tol=tol, verb=verb,
                   admix=admix, method_admix=method_admix,
                   smash_gap = smash_gap,
                   smash_method = smash_method,
@@ -174,8 +175,8 @@ smash.tpxinit <- function(X, initheta, K1, alpha, verb, nbundles=1,
 ## ** main workhorse function.  Only Called by the above wrappers.
 ## topic estimation for a given number of topics (taken as ncol(theta))
 smash.tpxfit <- function(X, theta, alpha, tol, verb,
-                   admix, method_admix, smooth_gap,
-                   smooth_method, grp, tmax, wtol, qn, nbundles,
+                   admix, method_admix, smash_gap,
+                   smash_method, grp, tmax, wtol, qn, nbundles,
                    use_squarem, light, top_genes, burn_in)
 {
   ## inputs and dimensions
@@ -210,6 +211,7 @@ smash.tpxfit <- function(X, theta, alpha, tol, verb,
   if(is.infinite(L)){ L <- sum( (log(Q0)*col_sums(X))[Q0>0] ) }
 
   iter <- 1;
+  row_total <- tapply(X$v, X$i, sum);
 
   ## Iterate towards MAP
   while( update  && iter < tmax ){
@@ -318,7 +320,8 @@ smash.tpxfit <- function(X, theta, alpha, tol, verb,
   #  L_new <- smash.tpxlpost(X=X, theta=move$theta, omega=move$omega, alpha=alpha, admix=admix, grp=grp)
   #  QNup <- list("move"=move, "L"=L_new, "Y"=NULL)
     ## quasinewton-newton acceleration
-    QNup <- smash.tpxQN(move=move, Y=Y, X=X, alpha=alpha, verb=verb, admix=admix, grp=grp, doqn=qn-dif)
+    QNup <- smash.tpxQN(move=move, Y=Y, X=X, alpha=alpha, verb=verb, admix=admix,
+                        grp=grp, doqn=qn-dif)
     move <- QNup$move
     Y <- QNup$Y
     }
@@ -328,29 +331,27 @@ smash.tpxfit <- function(X, theta, alpha, tol, verb,
       if(verb > 10){ cat("_reversing a step_") }
       move <- smash.tpxEM(X=X, m=m, theta=theta, omega=omega, alpha=alpha, admix=admix,
                     method_admix=method_admix,grp=grp)
-      QNup$L <-  smash.tpxlpost(X=X, theta=move$theta, omega=move$omega, alpha=alpha, admix=admix, grp=grp) }
+      QNup$L <-  smash.tpxlpost(X=X, theta=theta_old, omega=move$omega, alpha=alpha, admix=admix, grp=grp) }
 
-    if(iter %% smash_gap){
-        if(smooth_method=="poisson"){
+    if(iter %% smash_gap==0){
+        if(smash_method=="poisson"){
             z_leaf_est <- round(sweep(move$theta, MARGIN=2, colSums(sweep(move$omega, MARGIN = 1, row_total, "*")), "*"));
             z_leaf_smoothed <- do.call(cbind, lapply(1:dim(z_leaf_est)[2], function(k)
             {
                 if(sum(z_leaf_est[,k])>0){
-                    out <- suppressMessages(smashr::smash.poiss(z_leaf_est[,k]))
+                    out <- suppressMessages(smashr::smash.poiss(z_leaf_est[,k], cxx = TRUE, ashparam = list(control=list(maxiter=500))))
                     return(out)
                 }else{
                     return(z_leaf_est[,k])
                 }
             }))
-            theta_smoothed <- smash.normalizetpx(z_leaf_smoothed, byrow=FALSE)
+            theta_smoothed <- smash.normalizetpx(z_leaf_smoothed+1e-14, byrow=FALSE)
             move <- list(theta=theta_smoothed, omega=omega)
-            QNup$L <-  smash.tpxlpost(fcounts, move$omega, move$theta,
-                                del_beta, a_mu, b_mu, ztree_options=1,
-                                adapt.method=adapt.method)
+            QNup$L <-  smash.tpxlpost(X, theta = theta_smoothed, omega = move$omega, alpha=alpha, admix=admix, grp=grp)
           }
 
-    if(smooth_method=="poisson"){
-            z_leaf_est <- round(sweep(move$theta, MARGIN=2, colSums(sweep(move$omega, MARGIN = 1, row_total, "*")), "*"));
+         if(smash_method=="gaussian"){
+            z_leaf_est <- move$theta
             z_leaf_smoothed <- do.call(cbind, lapply(1:dim(z_leaf_est)[2], function(k)
             {
               if(sum(z_leaf_est[,k])>0){
@@ -361,11 +362,10 @@ smash.tpxfit <- function(X, theta, alpha, tol, verb,
                       return(z_leaf_est[,k])
                 }
             }))
-            theta_smoothed <- smash.normalizetpx(z_leaf_smoothed, byrow=FALSE)
+            theta_smoothed <- smash.normalizetpx(z_leaf_smoothed+1e-06, byrow=FALSE)
             move <- list(theta=theta_smoothed, omega=omega)
-            QNup$L <-  smash.tpxlpost(fcounts, move$omega, move$theta,
-                                    del_beta, a_mu, b_mu, ztree_options=1,
-                                    adapt.method=adapt.method)
+            QNup$L <-  smash.tpxlpost(X, theta = move$theta, omega = move$omega,
+                                      alpha=alpha, admix=admix, grp=grp)
         }
     }
 
@@ -397,25 +397,24 @@ smash.tpxfit <- function(X, theta, alpha, tol, verb,
 
   }
 
-  if(smooth_method=="poisson"){
+  if(smash_method=="poisson"){
     z_leaf_est <- round(sweep(theta, MARGIN=2, colSums(sweep(omega, MARGIN = 1, row_total, "*")), "*"));
     z_leaf_smoothed <- do.call(cbind, lapply(1:dim(z_leaf_est)[2], function(k)
     {
       if(sum(z_leaf_est[,k])>0){
-        out <- suppressMessages(smashr::smash.poiss(z_leaf_est[,k]))
+        out <- suppressMessages(smashr::smash.poiss(z_leaf_est[,k], cxx = TRUE, ashparam = list(control=list(maxiter=10))))
         return(out)
       }else{
         return(z_leaf_est[,k])
       }
     }))
-    theta_smoothed <- smash.normalizetpx(z_leaf_smoothed, byrow=FALSE)
-    L <-  smash.tpxlpost(fcounts, omega, theta_smoothed,
-                            del_beta, a_mu, b_mu, ztree_options=1,
-                            adapt.method=adapt.method)
+    theta_smoothed <- smash.normalizetpx(z_leaf_smoothed+1e-10, byrow=FALSE)
+    L <-  smash.tpxlpost(X, theta = theta_smoothed, omega = omega,
+                         alpha=alpha, admix=admix, grp=grp)
   }
 
-  if(smooth_method=="gaussian"){
-    z_leaf_est <- round(sweep(move$theta, MARGIN=2, colSums(sweep(move$omega, MARGIN = 1, row_total, "*")), "*"));
+  if(smash_method=="gaussian"){
+    z_leaf_est <- move$theta
     z_leaf_smoothed <- do.call(cbind, lapply(1:dim(z_leaf_est)[2], function(k)
     {
       if(sum(z_leaf_est[,k])>0){
@@ -426,10 +425,9 @@ smash.tpxfit <- function(X, theta, alpha, tol, verb,
         return(z_leaf_est[,k])
       }
     }))
-    theta_smoothed <- smash.normalizetpx(z_leaf_smoothed, byrow=FALSE)
-    L <-  smash.tpxlpost(fcounts, omega, theta_smoothed,
-                            del_beta, a_mu, b_mu, ztree_options=1,
-                            adapt.method=adapt.method)
+    theta_smoothed <- smash.normalizetpx(z_leaf_smoothed+1e-10, byrow=FALSE)
+    L <-  smash.tpxlpost(X, theta = theta_smoothed, omega = omega,
+                         alpha=alpha, admix=admix, grp=grp)
   }
 
   ## final log posterior
@@ -592,8 +590,7 @@ smash.tpxlpost <- function(X, theta, omega, alpha, admix=TRUE, grp=NULL)
   if(!inherits(X,"simple_triplet_matrix")){ stop("X needs to be a simple_triplet_matrix.") }
   K <- ncol(theta)
 
-  if(admix){ L <- sum( X$v*log(smash.tpxQ(theta=theta, omega=omega, doc=X$i, wrd=X$j)) ) }
-  else{ L <- sum(smash.tpxMixQ(X, omega, theta, grp)$lqlhd) }
+  if(admix){ L <- sum( X$v*log(smash.tpxQ(theta=theta, omega=omega, doc=X$i, wrd=X$j)) ) }else{ L <- sum(smash.tpxMixQ(X, omega, theta, grp)$lqlhd) }
   if(is.null(nrow(alpha))){ if(alpha != 0){ L <- L + sum(alpha*log(theta))  } } # unnormalized prior
   L <- L + sum(log(omega))/K
 
