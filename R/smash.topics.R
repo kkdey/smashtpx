@@ -15,12 +15,13 @@ smash.topics <- function(counts,
                    use_squarem=FALSE,
                    init.adapt=FALSE,
                    light=1,
-                   method_admix=1,
                    sample_init=TRUE,
                    init.method = "taddy",
                    smash_gap = 100,
                    smash_method = "gaussian",
                    reflect = FALSE,
+                   wtol=10^{-4},
+                   qn=100,
                    tmax=10000,...)
   ## tpxselect defaults: tmax=10000, wtol=10^(-4), qn=100, grp=NULL,
   ## nonzero=FALSE, dcut=-10, top_genes=100, burn_in=5
@@ -84,7 +85,7 @@ smash.topics <- function(counts,
   initopics <- smash.tpxinit(X[index_init,], initopics, K[1],
                        shape, verb, nbundles=1, use_squarem=FALSE,
                        init.adapt)
-    #initopics <- t(gtools::rdirichlet(4, rep(1+ 1/K*p, p)))
+    #initopics <- t(gtools::rdirichlet(4, rep(1+ 1/K*B, B)))
   }else{
  #   if(change_start_points){
  #      initopics <- smash.tpxinit(X[1:min(ceiling(nrow(X)*.05),100),], initopics, K[1]+3,
@@ -98,29 +99,155 @@ smash.topics <- function(counts,
   }}
 
   if(init.method=="kmeans"){
-    kmeans.init=kmeans(fcounts,K,nstart=5, iter.max=100)
-    phi=t(kmeans.init$centers)
-    initopics = apply(phi, 2, function(x) return(x/sum(x)))
+    kmeans.init=kmeans(fcounts, K, nstart=5, iter.max=100)
+    phi0 = kmeans.init$centers;
+    phi0 = t(apply(phi0, 1, function(x) return(x/sum(x))))
+    theta <- t(phi0);
+    omega = rep(1,n)%o%normalize(as.vector(table(kmeans.init$cluster)))
   }
 
+   alpha <- 1/(K*p)
+   if(is.matrix(alpha)){ if(nrow(alpha)!=p || ncol(alpha)!=K){ stop("bad matrix alpha dimensions") }}
 
-  initopics[initopics==1] <- 1 - 1e-14;
-  initopics[initopics==0] <- 1e-14;
-  initopics <- smash.normalizetpx(initopics, byrow = FALSE)
+   L <- smash.tpxlpost(y=y, theta=theta, omega=omega,
+                      alpha=alpha, admix=admix, grp=grp);
+   iter <- 0
+   dif <- tol+1+qn
+   update <- TRUE
+   row_total <- tapply(X$v, X$i, sum);
+   if(verb){ cat(paste("Fitting the",K,"topic model.\n")) }
+   if(verb>0){
+     cat("log posterior increase: " )
+     digits <- max(1, -floor(log(tol, base=10))) }
+   y <- as.matrix(X);
+   Y <- NULL;
 
- # initopics <- initopics[,sort(sample(1:(K[1]+2), K[1], replace=FALSE))];
- # initopics <- initopics[,1:K[1]];
-  ## either search for marginal MAP K and return bayes factors, or just fit
-  tpx <- smash.tpxSelect(X, K, bf, initopics,
-                         alpha=shape, tol, kill, verb, nbundles,
-                         use_squarem,
-                         light, tmax, admix=TRUE,
-                         method_admix=1,
-                         sample_init=TRUE,
-                         smash_gap = smash_gap,
-                         smash_method = smash_method,
-                         grp=NULL, wtol=10^{-4}, qn=100,
-                         nonzero=FALSE, dcut=-10, top_genes=150, burn_in=5)
+  while( update  && iter < tmax ){
+
+    omega <- smash.normalizetpx(omega + 1e-15, byrow=TRUE);
+    theta <- smash.normalizetpx(theta + 1e-15, byrow=FALSE);
+
+    plot(theta[,1], type="l", col="red");
+    lines(theta[,2], col="blue");
+    lines(theta[,3], col="green")
+
+    m <- row_sums(X);
+    moveEM <- smash.tpxEM(y=y, m=m, theta=theta, omega=omega,
+                        alpha=alpha, admix=admix, grp=grp)
+    lambda.unsmoothed <- moveEM$lambda;
+
+    #  L_new <- smash.tpxlpost(y=y, theta=move$theta, omega=move$omega, alpha=alpha, admix=admix, grp=grp)
+    #  QNup <- list("move"=move, "L"=L_new, "Y"=NULL)
+    ## quasinewton-newton acceleration
+    # moveQN <- list(theta = moveEM$theta, omega = moveEM$omega);
+    # QNup <- smash.tpxQN(move=moveQN, Y=Y, y=y, alpha=alpha, verb=verb,
+    #                      admix=admix, grp=grp, doqn=qn-dif)
+    # move <- QNup$move
+    # lambda <- t(move$theta)*moveEM$lscale;
+
+    if(iter %% smash_gap==0){
+
+      if(smash_method=="poisson"){
+          lambda=smooth.lambda(moveEM$lambda)
+          lambda[is.na(lambda)]=lambda.unsmoothed[is.na(lambda)]
+          phi_smoothed=lambda/moveEM$lscale
+          move <- list(theta=t(phi_smoothed), omega=moveEM$omega)
+          QNup_L <-  smash.tpxlpost(y, theta = move$theta,
+                                  omega = move$omega, alpha=alpha,
+                                  admix=admix, grp=grp)
+        }else if(smash_method=="gaussian"){
+            z_leaf_est <- moveEM$theta
+            z_leaf_smoothed <- do.call(cbind, lapply(1:dim(z_leaf_est)[2],
+            function(k)
+            {
+              if(sum(z_leaf_est[,k])>0){
+                out <- suppressMessages(smashr::smash.gaus(z_leaf_est[,k],
+                            ashparam = list(control=list(maxiter=50))))
+                out[ out < 0] = 0
+                return(out)
+                }else{
+                  return(z_leaf_est[,k])
+              }
+            }))
+          theta_smoothed <- smash.normalizetpx(z_leaf_smoothed+1e-06,
+                                               byrow=FALSE)
+          move <- list(theta=theta_smoothed, omega=moveEM$omega)
+          QNup_L <-  smash.tpxlpost(y, theta = move$theta,
+                                    omega = move$omega,
+                                    alpha=alpha, admix=admix, grp=grp)
+          }
+      }
+
+      dif <- abs(QNup_L-L)
+
+      L <- QNup_L
+
+
+      ## check convergence
+      if(abs(dif) < tol){
+        if(sum(abs(theta-move$theta)) < tol){ update = FALSE } }
+
+      ## print
+      if(verb>0 && (iter-1)%%ceiling(1/verb)==0 && iter>0){
+          ##if(verb>0 && iter>0){
+        cat( paste( round(dif,digits), #" (", sum(abs(theta-move$theta)),")",
+                      ", ", sep="") ) }
+
+     ## heartbeat for long jobs
+      if(((iter+1)%%1000)==0){
+          cat(sprintf("p %d iter %d diff %g\n",
+                    nrow(move$theta), iter+1,round(dif))) }
+
+      ## iterate
+      iter <- iter+1
+      theta <- move$theta
+      omega <- move$omega
+
+  }
+
+  if(smash_method=="poisson"){
+    lambda=smooth.lambda(moveEM$lambda)
+    lambda[is.na(lambda)]=lambda.unsmoothed[is.na(lambda)]
+    phi_smoothed=lambda/moveEM$lscale
+    theta_smoothed <- t(phi_smoothed);
+    move <- list(theta=theta_smoothed, omega=omega)
+    L <-  smash.tpxlpost(y, theta = move$theta,
+                              omega = move$omega, alpha=alpha,
+                              admix=admix, grp=grp)
+  }
+
+  if(smash_method=="gaussian"){
+    z_leaf_est <- move$theta
+    z_leaf_smoothed <- do.call(cbind, lapply(1:dim(z_leaf_est)[2],
+    function(k)
+    {
+      if(sum(z_leaf_est[,k])>0){
+        out <- suppressMessages(smashr::smash.gaus(z_leaf_est[,k]))
+        out[ out < 0] = 0
+        return(out)
+      }else{
+        return(z_leaf_est[,k])
+      }
+    }))
+    theta_smoothed <- smash.normalizetpx(z_leaf_smoothed+1e-10, byrow=FALSE)
+    L <-  smash.tpxlpost(y, theta = theta_smoothed, omega = omega,
+                         alpha=alpha, admix=admix, grp=grp)
+  }
+
+  ## final log posterior
+  ## summary print
+  if(verb>0){
+    cat("done.")
+    if(verb>1) { cat(paste(" (L = ", round(L,digits), ")", sep="")) }
+    cat("\n")
+  }
+
+  tpx <- list(theta=move$theta,
+              omega=move$omega,
+              K=K,
+              alpha=alpha,
+              L=L,
+              iter=iter)
 
   K <- tpx$K
 
@@ -133,9 +260,142 @@ smash.topics <- function(counts,
   if(nrow(omega)==nrow(X)){ dimnames(omega)[[1]] <- dimnames(X)[[1]] }
   theta = theta[1:dim(counts)[2],];
   ## topic object
-  out <- list(K=K, theta=theta, omega=omega, BF=tpx$BF, D=tpx$D, X=X)
+  out <- list(K=K, theta=theta, omega=omega, X=X)
   class(out) <- "topics"
-  invisible(out) }
+  invisible(out)
+
+}
+
+
+## single EM update. two versions: admix and mix
+smash.tpxEM <- function(y, m, theta, omega, alpha, admix, grp)
+{
+
+  n <- nrow(y)
+  p <- ncol(y)
+  K <- ncol(theta)
+
+  phi <- t(theta);
+  pi <- omega
+
+  gamma=pi[rep(1:n,each=p),]*t(phi)[rep(1:p,n),]
+  gamma=gamma/rowSums(gamma)
+  gamma[is.na(gamma)]=1/K
+  gammab=(as.vector(t(y))%o%rep(1,K))*gamma
+  pi.num=t(apply(array(gammab,dim=c(p,n,K)),2,colSums))
+  pi=pi.num/(rowSums(y)%o%rep(1,K))
+  ybt=t(apply(array(gammab,dim=c(p,n,K)),1,colSums))
+  theta=ybt/(rep(1,p)%o%colSums(gammab))
+
+  lscale=((colSums(ybt)/colSums(pi))%o%rep(1,p))
+  lambda=t(theta)*lscale
+
+  omega <- smash.normalizetpx(pi, byrow=TRUE)
+  theta <- smash.normalizetpx(theta, byrow=FALSE);
+
+  return(list(theta=theta, omega=omega, lscale=lscale, lambda=lambda))
+}
+
+## Quasi Newton update for q>0
+smash.tpxQN <- function(move, Y, y, alpha, verb, admix, grp, doqn)
+{
+  move$theta[move$theta==1] <- 1 - 1e-14;
+  move$omega[move$omega==1] <- 1 - 1e-14;
+  move$omega[move$omega==0] <- 1e-14;
+  move$theta[move$theta==0] <- 1e-14;
+  move$theta <- smash.normalizetpx(move$theta, byrow = FALSE)
+  move$omega <- smash.normalizetpx(move$omega, byrow = TRUE)
+
+  ## always check likelihood
+  L <- smash.tpxlpost(y=y, theta=move$theta, omega=move$omega,
+                      alpha=alpha, admix=admix, grp=grp)
+
+  if(doqn < 0){ return(list(move=move, L=L, Y=Y)) }
+
+  ## update Y accounting
+  Y <- cbind(Y, smash.tpxToNEF(theta=move$theta, omega=move$omega))
+  if(ncol(Y) < 3){ return(list(Y=Y, move=move, L=L)) }
+  if(ncol(Y) > 3){ warning("mis-specification in quasi-newton update; please report this bug.") }
+
+  ## Check quasinewton secant conditions and solve F(x) - x = 0.
+  U <- as.matrix(Y[,2]-Y[,1])
+  V <- as.matrix(Y[,3]-Y[,2])
+  sUU <- sum(U^2)
+  sVU <- sum(V*U)
+  Ynew <- Y[,3] + V*(sVU/(sUU-sVU))
+  qnup <- smash.tpxFromNEF(Ynew, n=nrow(move$omega),
+                           p=nrow(move$theta), K=ncol(move$theta))
+  ## check for a likelihood improvement
+  Lqnup <- try(smash.tpxlpost(y=y, theta=qnup$theta, omega=qnup$omega,
+                              alpha=alpha, admix=admix, grp=grp), silent=TRUE)
+
+  if(inherits(Lqnup, "try-error")){
+    if(verb>10){ cat("(QN: try error) ") }
+    return(list(Y=Y[,-1], move=move, L=L)) }
+
+  if(verb>10){ cat(paste("(QN diff ", round(Lqnup-L,3), ")\n", sep="")) }
+
+  if(Lqnup < L){
+    return(list(Y=Y[,-1], move=move, L=L)) }
+  else{
+    L <- Lqnup
+    Y <- cbind(Y[,2],Ynew)
+    return( list(Y=Y, move=qnup, L=L) )
+  }
+}
+
+smash.tpxlpost_squarem <- function(param_vec_in,  y, m, K,
+                                   alpha, admix=TRUE, method_admix, grp=NULL)
+{
+  omega_in <- inv.logit(matrix(param_vec_in[1:(nrow(X)*K)], nrow=nrow(X), ncol=K));
+  #  omega_in <- matrix(param_vec_in[1:(nrow(X)*K)], nrow=nrow(X), ncol=K);
+  theta_in <- inv.logit(matrix(param_vec_in[-(1:(nrow(X)*K))], nrow=ncol(X), ncol=K))
+  #  theta_in <- matrix(param_vec_in[-(1:(nrow(X)*K))], nrow=ncol(X), ncol=K);
+  return(smash.tpxlpost(y, theta_in, omega_in, alpha, admix, grp))
+}
+
+
+## unnormalized log posterior (objective function)
+smash.tpxlpost <- function(y, theta, omega, alpha, admix=TRUE, grp=NULL)
+{
+  theta[theta==1] <- 1 - 1e-10;
+  omega[omega==1] <- 1 - 1e-10;
+  omega[omega==0] <- 1e-10;
+  theta[theta==0] <- 1e-10;
+  theta <- smash.normalizetpx(theta, byrow = FALSE)
+  omega <- smash.normalizetpx(omega, byrow = TRUE)
+  K <- ncol(theta)
+
+  L.ini=log(omega%*%t(theta))
+  yL=y*L.ini
+  yL[is.na(yL)]=0
+  L = sum(yL)
+  return(L) }
+
+normalize=function(x){
+  #if(sum(abs(x))!=0){
+  return(x/sum(x))
+  #}else{
+  #  return(rep(0,length(x)))
+  #}
+}
+
+smooth.lambda = function(lambda){
+  #return(t(apply(lambda,1,ashsmooth.pois,cxx = FALSE)))
+  return(t(apply(lambda,1,smashr::smash.poiss,cxx = FALSE)))
+}
+
+library(slam)
+CheckCounts <- function(counts){
+  if(class(counts)[1] == "TermDocumentMatrix"){ counts <- t(counts) }
+  if(is.null(dimnames(counts)[[1]])){ dimnames(counts)[[1]] <- paste("doc",1:nrow(counts)) }
+  if(is.null(dimnames(counts)[[2]])){ dimnames(counts)[[2]] <- paste("wrd",1:ncol(counts)) }
+  empty <- slam::row_sums(counts) == 0
+  if(sum(empty) != 0){
+    counts <- counts[!empty,]
+    cat(paste("Removed", sum(empty), "blank documents.\n")) }
+  return(as.simple_triplet_matrix(counts))
+}
 
 
 ## S3 method predict function
