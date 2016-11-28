@@ -21,3 +21,4 @@ export(stm_tfidf,
        smash.tpxMixQ)
 
 importFrom("stats", "kmeans", "pchisq", "rgamma", "sd")
+

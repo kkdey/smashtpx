@@ -1,11 +1,19 @@
 Package: smashtpx
-Title:  Grade of Membership models with adaptive smoothing on features using SMASH
+Title: Grade of Membership models with adaptive smoothing on features using
+    SMASH
 Version: 0.99.0
 Author: Kushal K Dey  <kkdey@uchicago.edu>
-Imports: slam
-Depends: R (>= 2.10), SQUAREM, boot
-Suggests: MASS
-Description:  A Grade of Membership model with smoothing across ordered featues using SMASH.
+Imports:
+    slam
+Depends:
+    R (>= 2.10),
+    SQUAREM,
+    boot
+Suggests:
+    MASS
+Description: A Grade of Membership model with smoothing across ordered featues
+    using SMASH.
 Maintainer: Kushal K Dey <kkdey@uchicago.edu>
 License: GPL-3
 URL: http://kkdey.github.io
+RoxygenNote: 5.0.1

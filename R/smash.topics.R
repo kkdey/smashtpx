@@ -375,10 +375,10 @@ smash.tpxlpost_squarem <- function(param_vec_in,  y, m, K,
 ## unnormalized log posterior (objective function)
 smash.tpxlpost <- function(y, theta, omega, alpha, admix=TRUE, grp=NULL)
 {
-  theta[theta==1] <- 1 - 1e-10;
-  omega[omega==1] <- 1 - 1e-10;
-  omega[omega==0] <- 1e-10;
-  theta[theta==0] <- 1e-10;
+ # theta[theta==1] <- 1 - 1e-10;
+ #  omega[omega==1] <- 1 - 1e-10;
+ #  omega[omega==0] <- 1e-10;
+ #  theta[theta==0] <- 1e-10;
   theta <- smash.normalizetpx(theta, byrow = FALSE)
   omega <- smash.normalizetpx(omega, byrow = TRUE)
   K <- ncol(theta)
