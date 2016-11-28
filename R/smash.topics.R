@@ -20,6 +20,7 @@ smash.topics <- function(counts,
                    smash_gap = 100,
                    smash_method = "gaussian",
                    use_flash_ti=FALSE,
+                   with_qn = FALSE,
                    K_flash = 5,
                    reflect = FALSE,
                    wtol=10^{-4},
@@ -136,7 +137,16 @@ smash.topics <- function(counts,
     m <- row_sums(X);
     moveEM <- smash.tpxEM(y=y, m=m, theta=theta, omega=omega,
                         alpha=alpha, admix=admix, grp=grp)
+    lambda <- moveEM$lambda;
     lambda.unsmoothed <- moveEM$lambda;
+
+    if(with_qn){
+       moveQN <- list(theta = moveEM$theta, omega = moveEM$omega);
+       QNup <- smash.tpxQN(move=moveQN, Y=Y, y=y, alpha=alpha, verb=verb,
+                            admix=admix, grp=grp, doqn=qn-dif)
+       move <- QNup$move
+       lambda <- t(move$theta)*moveEM$lscale;
+    }
 
     #  L_new <- smash.tpxlpost(y=y, theta=move$theta, omega=move$omega, alpha=alpha, admix=admix, grp=grp)
     #  QNup <- list("move"=move, "L"=L_new, "Y"=NULL)
@@ -151,10 +161,10 @@ smash.topics <- function(counts,
 
       if(smash_method=="poisson"){
           if(use_flash_ti){
-            ti_tab <- smashr::TI_table_construct(moveEM$lambda, cxx=TRUE, K_flash=K_flash)
-            lambda=smooth.lambda(moveEM$lambda, optional_ti_table = ti_tab)
+            ti_tab <- smashr::TI_table_construct(lambda, cxx=TRUE, K_flash=K_flash)
+            lambda=smooth.lambda(lambda, optional_ti_table = ti_tab)
           }else{
-            lambda=smooth.lambda(moveEM$lambda, optional_ti_table = NULL)
+            lambda=smooth.lambda(lambda, optional_ti_table = NULL)
           }
           lambda[is.na(lambda)]=lambda.unsmoothed[is.na(lambda)]
           phi_smoothed=lambda/moveEM$lscale
