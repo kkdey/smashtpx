@@ -1,16 +1,17 @@
 useDynLib(smashtpx)
 import(SQUAREM)
-import(boot)
 import(slam)
+import(ashr)
+import(smashr)
 
 export(stm_tfidf,
        smash.normalizetpx,
        rdir,
        smash.topics,
        smash.tpxEM,
-       smash.tpxlpost_squarem,
-       smooth.lambda,
        smash.tpxlpost,
+       smash.tpxlpost_squarem,
+       smooth.lambda.poiss,
        CheckCounts,
        smash.tpxweights,
        smash.tpxinit,

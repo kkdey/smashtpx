@@ -49,10 +49,7 @@ smash.topics <- function(counts,
 
   levels <- ceil+1;
   X <- CheckCounts(fcounts)
-
-  library(smashr)
-  library(ashr)
-
+  y <- as.matrix(X);
 
   p <- ncol(X)
   n <- nrow(X)
@@ -122,7 +119,6 @@ smash.topics <- function(counts,
    if(verb>0){
      cat("log posterior increase: " )
      digits <- max(1, -floor(log(tol, base=10))) }
-   y <- as.matrix(X);
    Y <- NULL;
 
   while( update  && iter < tmax ){
@@ -144,8 +140,7 @@ smash.topics <- function(counts,
        moveQN <- list(theta = moveEM$theta, omega = moveEM$omega);
        QNup <- smash.tpxQN(move=moveQN, Y=Y, y=y, alpha=alpha, verb=verb,
                             admix=admix, grp=grp, doqn=qn-dif)
-       move <- QNup$move
-       lambda <- t(move$theta)*moveEM$lscale;
+       lambda <- t(moveQN$theta)*moveEM$lscale;
     }
 
     #  L_new <- smash.tpxlpost(y=y, theta=move$theta, omega=move$omega, alpha=alpha, admix=admix, grp=grp)
@@ -161,10 +156,10 @@ smash.topics <- function(counts,
 
       if(smash_method=="poisson"){
           if(use_flash_ti){
-            ti_tab <- smashr::TI_table_construct(lambda, cxx=TRUE, K_flash=K_flash)
-            lambda=smooth.lambda(lambda, optional_ti_table = ti_tab)
+            ti_tab <- smashr::TI_table_construct(moveEM$lambda, cxx=TRUE, K_flash=K_flash)
+            lambda=smooth.lambda.poiss(moveEM$lambda, optional_ti_table = ti_tab)
           }else{
-            lambda=smooth.lambda(lambda, optional_ti_table = NULL)
+            lambda=smooth.lambda.poiss(moveEM$lambda, optional_ti_table = NULL)
           }
           lambda[is.na(lambda)]=lambda.unsmoothed[is.na(lambda)]
           phi_smoothed=lambda/moveEM$lscale
@@ -223,7 +218,12 @@ smash.topics <- function(counts,
   }
 
   if(smash_method=="poisson"){
-    lambda=smooth.lambda(moveEM$lambda)
+    if(use_flash_ti){
+      ti_tab <- smashr::TI_table_construct(moveEM$lambda, cxx=TRUE, K_flash=K_flash)
+      lambda=smooth.lambda.poiss(moveEM$lambda, optional_ti_table = ti_tab)
+    }else{
+      lambda=smooth.lambda.poiss(moveEM$lambda, optional_ti_table = NULL)
+    }
     lambda[is.na(lambda)]=lambda.unsmoothed[is.na(lambda)]
     phi_smoothed=lambda/moveEM$lscale
     theta_smoothed <- t(phi_smoothed);
@@ -397,13 +397,14 @@ normalize=function(x){
   #}
 }
 
-smooth.lambda = function(lambda, optional_ti_table){
+smooth.lambda.poiss = function(lambda, optional_ti_table){
   #return(t(apply(lambda,1,ashsmooth.pois,cxx = FALSE)))
   if(is.null(optional_ti_table)){
-   return(t(apply(lambda,1,smashr::smash.poiss, cxx = TRUE, optional_ti_table=optional_ti_table)))
+   # return(t(apply(lambda,1,smashr::smash.poiss, cxx=FALSE, lev = 0, lev1=0, optional_ti_table=NULL)))
+    return(t(apply(lambda,1,smashr::smash.poiss)))
   }else{
     out <- do.call(rbind, lapply(1:dim(lambda)[1], function(l) {
-      tmp <- smashr::smash.poiss(lambda[l,], cxx = TRUE, optional_ti_table=optional_ti_table[l,]);
+      tmp <- smashr::smash.poiss(lambda[l,], cxx = FALSE, lev = 0, lev1=0, optional_ti_table=optional_ti_table[l,]);
       return(tmp)
     }))
     return(out)

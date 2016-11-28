@@ -116,79 +116,8 @@ smash.tpxsquarEM <- function(param_vec_in, X, m, K,
 
 
 ## Quasi Newton update for q>0
-smash.tpxQN <- function(move, Y, X, alpha, verb, admix, grp, doqn)
-{
-  move$theta[move$theta==1] <- 1 - 1e-14;
-  move$omega[move$omega==1] <- 1 - 1e-14;
-  move$omega[move$omega==0] <- 1e-14;
-  move$theta[move$theta==0] <- 1e-14;
-  move$theta <- smash.normalizetpx(move$theta, byrow = FALSE)
-  move$omega <- smash.normalizetpx(move$omega, byrow = TRUE)
-
-  ## always check likelihood
-  L <- smash.tpxlpost(X=X, theta=move$theta, omega=move$omega,
-                alpha=alpha, admix=admix, grp=grp)
-
-  if(doqn < 0){ return(list(move=move, L=L, Y=Y)) }
-
-  ## update Y accounting
-  Y <- cbind(Y, smash.tpxToNEF(theta=move$theta, omega=move$omega))
-  if(ncol(Y) < 3){ return(list(Y=Y, move=move, L=L)) }
-  if(ncol(Y) > 3){ warning("mis-specification in quasi-newton update; please report this bug.") }
-
-  ## Check quasinewton secant conditions and solve F(x) - x = 0.
-  U <- as.matrix(Y[,2]-Y[,1])
-  V <- as.matrix(Y[,3]-Y[,2])
-  sUU <- sum(U^2)
-  sVU <- sum(V*U)
-  Ynew <- Y[,3] + V*(sVU/(sUU-sVU))
-  qnup <- smash.tpxFromNEF(Ynew, n=nrow(move$omega),
-                     p=nrow(move$theta), K=ncol(move$theta))
-
-  ## check for a likelihood improvement
-  Lqnup <- try(smash.tpxlpost(X=X, theta=qnup$theta, omega=qnup$omega,
-                        alpha=alpha, admix=admix, grp=grp), silent=TRUE)
-
-  if(inherits(Lqnup, "try-error")){
-    if(verb>10){ cat("(QN: try error) ") }
-    return(list(Y=Y[,-1], move=move, L=L)) }
-
-  if(verb>10){ cat(paste("(QN diff ", round(Lqnup-L,3), ")\n", sep="")) }
-
-  if(Lqnup < L){
-    return(list(Y=Y[,-1], move=move, L=L)) }
-  else{
-    L <- Lqnup
-    Y <- cbind(Y[,2],Ynew)
-    return( list(Y=Y, move=qnup, L=L) )
-  }
-}
-
-smash.tpxlpost_squarem <- function(param_vec_in,  X, m, K,
-                             alpha, admix=TRUE, method_admix, grp=NULL)
-{
-  omega_in <- inv.logit(matrix(param_vec_in[1:(nrow(X)*K)], nrow=nrow(X), ncol=K));
-#  omega_in <- matrix(param_vec_in[1:(nrow(X)*K)], nrow=nrow(X), ncol=K);
-  theta_in <- inv.logit(matrix(param_vec_in[-(1:(nrow(X)*K))], nrow=ncol(X), ncol=K))
-#  theta_in <- matrix(param_vec_in[-(1:(nrow(X)*K))], nrow=ncol(X), ncol=K);
-  return(smash.tpxlpost(X, theta_in, omega_in, alpha, admix, grp))
-}
 
 
-## unnormalized log posterior (objective function)
-smash.tpxlpost <- function(X, theta, omega, alpha, admix=TRUE, grp=NULL)
-{
-  theta[theta==1] <- 1 - 1e-10;
-  omega[omega==1] <- 1 - 1e-10;
-  omega[omega==0] <- 1e-10;
-  theta[theta==0] <- 1e-10;
-  theta <- smash.normalizetpx(theta, byrow = FALSE)
-  omega <- smash.normalizetpx(omega, byrow = TRUE)
-  if(!inherits(X,"simple_triplet_matrix")){ stop("X needs to be a simple_triplet_matrix.") }
-  K <- ncol(theta)
-
-  if(admix){ L <- sum( X$v*log(smash.tpxQ(theta=theta, omega=omega, doc=X$i, wrd=X$j)) ) }else{ L <- sum(smash.tpxMixQ(X, omega, theta, grp)$lqlhd) }
-  return(L) }
 
 ## log marginal likelihood
 smash.tpxML <- function(X, theta, omega, alpha, L, dcut, admix=TRUE, grp=NULL){
