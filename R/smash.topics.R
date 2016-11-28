@@ -19,6 +19,8 @@ smash.topics <- function(counts,
                    init.method = "taddy",
                    smash_gap = 100,
                    smash_method = "gaussian",
+                   use_flash_ti=FALSE,
+                   K_flash = 5,
                    reflect = FALSE,
                    wtol=10^{-4},
                    qn=100,
@@ -148,7 +150,12 @@ smash.topics <- function(counts,
     if(iter %% smash_gap==0){
 
       if(smash_method=="poisson"){
-          lambda=smooth.lambda(moveEM$lambda)
+          if(use_flash_ti){
+            ti_tab <- smashr::TI_table_construct(moveEM$lambda, cxx=TRUE, K_flash=K_flash)
+            lambda=smooth.lambda(moveEM$lambda, optional_ti_table = ti_tab)
+          }else{
+            lambda=smooth.lambda(moveEM$lambda, optional_ti_table = NULL)
+          }
           lambda[is.na(lambda)]=lambda.unsmoothed[is.na(lambda)]
           phi_smoothed=lambda/moveEM$lscale
           move <- list(theta=t(phi_smoothed), omega=moveEM$omega)
@@ -380,9 +387,17 @@ normalize=function(x){
   #}
 }
 
-smooth.lambda = function(lambda){
+smooth.lambda = function(lambda, optional_ti_table){
   #return(t(apply(lambda,1,ashsmooth.pois,cxx = FALSE)))
-  return(t(apply(lambda,1,smashr::smash.poiss,cxx = FALSE)))
+  if(is.null(optional_ti_table)){
+   return(t(apply(lambda,1,smashr::smash.poiss, cxx = TRUE, optional_ti_table=optional_ti_table)))
+  }else{
+    out <- do.call(rbind, lapply(1:dim(lambda)[1], function(l) {
+      tmp <- smashr::smash.poiss(lambda[l,], cxx = TRUE, optional_ti_table=optional_ti_table[l,]);
+      return(tmp)
+    }))
+    return(out)
+  }
 }
 
 library(slam)
