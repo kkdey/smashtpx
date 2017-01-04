@@ -157,9 +157,13 @@ smash.topics <- function(counts,
       if(smash_method=="poisson"){
           if(use_flash_ti){
             ti_tab <- smashr::TI_table_construct(moveEM$lambda, cxx=TRUE, K_flash=K_flash)
-            lambda=smooth.lambda.poiss(moveEM$lambda, optional_ti_table = ti_tab)
+            out=smooth.lambda.poiss(moveEM$lambda, optional_ti_table = ti_tab)
+            lambda = out$est
+            smashL = out$logl
           }else{
-            lambda=smooth.lambda.poiss(moveEM$lambda, optional_ti_table = NULL)
+            out=smooth.lambda.poiss(moveEM$lambda, optional_ti_table = NULL)
+            lambda = out$est
+            smashL = out$logl
           }
           lambda[is.na(lambda)]=lambda.unsmoothed[is.na(lambda)]
           phi_smoothed=lambda/moveEM$lscale
@@ -167,27 +171,45 @@ smash.topics <- function(counts,
           QNup_L <-  smash.tpxlpost(y, theta = move$theta,
                                   omega = move$omega, alpha=alpha,
                                   admix=admix, grp=grp)
+          QNup_L <- QNup_L + smashL
         }else if(smash_method=="gaussian"){
             z_leaf_est <- moveEM$theta
-            z_leaf_smoothed <- do.call(cbind, lapply(1:dim(z_leaf_est)[2],
-            function(k)
-            {
+            z_leaf_smoothed <- numeric()
+            smashL = 0
+            for(k in 1:dim(z_leaf_est)[2]){
               if(sum(z_leaf_est[,k])>0){
-                out <- suppressMessages(smashr::smash.gaus(z_leaf_est[,k],
-                            ashparam = list(control=list(maxiter=50))))
-                out[ out < 0] = 0
-                return(out)
-                }else{
-                  return(z_leaf_est[,k])
+                out <- suppressMessages(smashr::smash.gaus(z_leaf_est[,k], return.loglr=TRUE,
+                                                           ashparam = list(control=list(maxiter=50))))
+                est <- out$mu.est
+                est[ est < 0] = 0
+                z_leaf_smoothed[,k] <- est
+                smashL = smashL + out$logL
+              }else{
+                z_leaf_smoothed[,k] = z_leaf_est[,k]
+                smashL = smashL + 0
               }
-            }))
+            }
+            # z_leaf_smoothed <- do.call(cbind, lapply(1:dim(z_leaf_est)[2],
+            # function(k)
+            # {
+            #   if(sum(z_leaf_est[,k])>0){
+            #     out <- suppressMessages(smashr::smash.gaus(z_leaf_est[,k], return.loglr=TRUE,
+            #                 ashparam = list(control=list(maxiter=50))))
+            #     est <- out$mu.est
+            #     est[ est < 0] = 0
+            #     return(out)
+            #     }else{
+            #       return(z_leaf_est[,k])
+            #   }
+            # }))
           theta_smoothed <- smash.normalizetpx(z_leaf_smoothed+1e-06,
                                                byrow=FALSE)
           move <- list(theta=theta_smoothed, omega=moveEM$omega)
           QNup_L <-  smash.tpxlpost(y, theta = move$theta,
                                     omega = move$omega,
                                     alpha=alpha, admix=admix, grp=grp)
-          }
+          QNup_L = QNup_L + smashL
+        }
       }
 
       dif <- abs(QNup_L-L)
@@ -220,9 +242,13 @@ smash.topics <- function(counts,
   if(smash_method=="poisson"){
     if(use_flash_ti){
       ti_tab <- smashr::TI_table_construct(moveEM$lambda, cxx=TRUE, K_flash=K_flash)
-      lambda=smooth.lambda.poiss(moveEM$lambda, optional_ti_table = ti_tab)
+      out=smooth.lambda.poiss(moveEM$lambda, optional_ti_table = ti_tab)
+      lambda = out$est
+      smashL = out$logl
     }else{
-      lambda=smooth.lambda.poiss(moveEM$lambda, optional_ti_table = NULL)
+      out=smooth.lambda.poiss(moveEM$lambda, optional_ti_table = NULL)
+      lambda = out$est
+      smashL = out$logl
     }
     lambda[is.na(lambda)]=lambda.unsmoothed[is.na(lambda)]
     phi_smoothed=lambda/moveEM$lscale
@@ -231,24 +257,42 @@ smash.topics <- function(counts,
     L <-  smash.tpxlpost(y, theta = move$theta,
                               omega = move$omega, alpha=alpha,
                               admix=admix, grp=grp)
+    L <- L + smashL
   }
 
   if(smash_method=="gaussian"){
     z_leaf_est <- move$theta
-    z_leaf_smoothed <- do.call(cbind, lapply(1:dim(z_leaf_est)[2],
-    function(k)
-    {
+    z_leaf_smoothed <- numeric()
+    smashL = 0
+    for(k in 1:dim(z_leaf_est)[2]){
       if(sum(z_leaf_est[,k])>0){
-        out <- suppressMessages(smashr::smash.gaus(z_leaf_est[,k]))
-        out[ out < 0] = 0
-        return(out)
+        out <- suppressMessages(smashr::smash.gaus(z_leaf_est[,k], return.loglr=TRUE,
+                                                   ashparam = list(control=list(maxiter=50))))
+        est <- out$mu.est
+        est[ est < 0] = 0
+        z_leaf_smoothed[,k] <- est
+        smashL = smashL + out$logL
       }else{
-        return(z_leaf_est[,k])
+        z_leaf_smoothed[,k] = z_leaf_est[,k]
+        smashL = smashL + 0
       }
-    }))
+    }
+    # z_leaf_est <- move$theta
+    # z_leaf_smoothed <- do.call(cbind, lapply(1:dim(z_leaf_est)[2],
+    # function(k)
+    # {
+    #   if(sum(z_leaf_est[,k])>0){
+    #     out <- suppressMessages(smashr::smash.gaus(z_leaf_est[,k]))
+    #     out[ out < 0] = 0
+    #     return(out)
+    #   }else{
+    #     return(z_leaf_est[,k])
+    #   }
+    # }))
     theta_smoothed <- smash.normalizetpx(z_leaf_smoothed+1e-10, byrow=FALSE)
     L <-  smash.tpxlpost(y, theta = theta_smoothed, omega = omega,
                          alpha=alpha, admix=admix, grp=grp)
+    L <- L + smashL
   }
 
   ## final log posterior
@@ -397,17 +441,29 @@ normalize=function(x){
   #}
 }
 
-smooth.lambda.poiss = function(lambda, optional_ti_table){
+smooth.lambda.poiss = function(lambda, optional_ti_table=NULL){
   #return(t(apply(lambda,1,ashsmooth.pois,cxx = FALSE)))
   if(is.null(optional_ti_table)){
    # return(t(apply(lambda,1,smashr::smash.poiss, cxx=FALSE, lev = 0, lev1=0, optional_ti_table=NULL)))
-    return(t(apply(lambda,1,smashr::smash.poiss)))
+    mat <- as.numeric()
+    logl=0;
+    for(i in 1:dim(lambda)[1]){
+      out <- smashr::smash.poiss(lambda[i,], post.var = TRUE)
+      mat <-  rbind(mat, out$est)
+      logl = logl + out$logL
+    }
+    ll <- list(est=mat, logl = logl)
+    return(ll)
   }else{
-    out <- do.call(rbind, lapply(1:dim(lambda)[1], function(l) {
-      tmp <- smashr::smash.poiss(lambda[l,], cxx = FALSE, lev = 0, lev1=0, optional_ti_table=optional_ti_table[l,]);
-      return(tmp)
-    }))
-    return(out)
+    mat <- as.numeric()
+    logl=0
+    for(i in 1:dim(lambda)[1]){
+      out <- smashr::smash.poiss(lambda[i,], post.var = TRUE, cxx = FALSE, lev = 0, lev1=0, optional_ti_table=optional_ti_table[i,])
+      mat <-  rbind(mat, out$est)
+      logl = logl + out$logL
+    }
+    ll <- list(est=mat, logl = logl)
+    return(ll)
   }
 }
 
