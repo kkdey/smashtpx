@@ -79,24 +79,40 @@ smash.topics <- function(counts,
             index_init <- sample(1:nrow(X),samp_length);
        }
 
-  ## initialize
-  if(init.adapt==FALSE){
+      ## initialize
+      if(init.adapt==FALSE){
+            initopics <- smash.tpxinit(X[index_init,], initopics, K[1],
+                         shape, verb, nbundles=1, use_squarem=FALSE,
+                         init.adapt)
+            #initopics <- t(gtools::rdirichlet(4, rep(1+ 1/K*B, B)))
+      }else{
+       #   if(change_start_points){
+        #      initopics <- smash.tpxinit(X[1:min(ceiling(nrow(X)*.05),100),], initopics, K[1]+3,
+        #                          shape, verb, nbundles=1, use_squarem=FALSE, init.adapt)
+       #      initopics <- initopics[,sort(sample(1:(K[1]+2), K[1], replace=FALSE))];
+       #   }else{
+            initopics <- smash.tpxinit(X[index_init,], initopics, K[1],
+                                shape, verb, nbundles=1, use_squarem=FALSE,
+                                init.adapt)
+        #    }
+       }
+      theta <- initopics
+      n <- nrow(X)
+      p <- ncol(X)
+      m <- row_sums(X)
+      if(is.null(alpha)){ alpha <- 1/(K*p) }
+      if(is.matrix(alpha)){ if(nrow(alpha)!=p || ncol(alpha)!=K){ stop("bad matrix alpha dimensions") }}
 
-  initopics <- smash.tpxinit(X[index_init,], initopics, K[1],
-                       shape, verb, nbundles=1, use_squarem=FALSE,
-                       init.adapt)
-    #initopics <- t(gtools::rdirichlet(4, rep(1+ 1/K*B, B)))
-  }else{
- #   if(change_start_points){
- #      initopics <- smash.tpxinit(X[1:min(ceiling(nrow(X)*.05),100),], initopics, K[1]+3,
- #                          shape, verb, nbundles=1, use_squarem=FALSE, init.adapt)
- #      initopics <- initopics[,sort(sample(1:(K[1]+2), K[1], replace=FALSE))];
- #   }else{
-      initopics <- smash.tpxinit(X[index_init,], initopics, K[1],
-                           shape, verb, nbundles=1, use_squarem=FALSE,
-                           init.adapt)
- #    }
-  }}
+      ## recycle these in tpcweights to save time
+      xvo <- X$v[order(X$i)]
+      wrd <- X$j[order(X$i)]-1
+      doc <- c(0,cumsum(as.double(table(factor(X$i, levels=c(1:nrow(X)))))))
+
+      ## Initialize
+      system.time(omega <- smash.tpxweights(n=n, p=p, xvo=xvo, wrd=wrd, doc=doc, start=smash.tpxOmegaStart(X,theta), theta=theta))
+      if(!admix){ omega <- matrix(apply(omega,2, function(w) tapply(w,grp,mean)), ncol=K) }
+
+  }
 
   if(init.method=="kmeans"){
     kmeans.init=kmeans(fcounts, K, nstart=5, iter.max=100)
@@ -109,8 +125,8 @@ smash.topics <- function(counts,
    alpha <- 1/(K*p)
    if(is.matrix(alpha)){ if(nrow(alpha)!=p || ncol(alpha)!=K){ stop("bad matrix alpha dimensions") }}
 
-   L <- smash.tpxlpost(y=y, theta=theta, omega=omega,
-                      alpha=alpha, admix=admix, grp=grp);
+   # L <- smash.tpxlpost(y=y, theta=theta, omega=omega,
+   #                    alpha=alpha, admix=admix, grp=grp);
    iter <- 0
    dif <- tol+1+qn
    update <- TRUE
